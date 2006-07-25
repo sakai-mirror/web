@@ -1,5 +1,6 @@
 Skipped:
 
+11775	SAK-5464	Make new code Java 1.4 compliant
 11766			Add dependency on user-api project
 11691	SAK-5464	add macro expansion and ability to hide Options action
 11662	SAK-5464	add macro expansion and ability to hide Options action
