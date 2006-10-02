@@ -34,6 +34,8 @@ import org.sakaiproject.cheftool.VelocityPortletPaneledAction;
 import org.sakaiproject.cheftool.api.Menu;
 import org.sakaiproject.cheftool.menu.MenuImpl;
 import org.sakaiproject.event.api.SessionState;
+import org.sakaiproject.exception.IdUnusedException;
+import org.sakaiproject.exception.PermissionException;
 import org.sakaiproject.news.api.NewsChannel;
 import org.sakaiproject.news.api.NewsConnectionException;
 import org.sakaiproject.news.api.NewsFormatException;
@@ -106,7 +108,7 @@ public class NewsAction extends VelocityPortletPaneledAction
 			{
 				try
 				{
-					NewsChannel ch = NewsService.getChannel(channelUrl);
+					NewsService.getChannel(channelUrl);
 				}
 				catch (NewsConnectionException e)
 				{
@@ -122,7 +124,9 @@ public class NewsAction extends VelocityPortletPaneledAction
 				}
 				catch (Exception e)
 				{
-					// ??
+					if(Log.getLogger("chef").isDebugEnabled()) {
+						Log.debug("chef", "NewsAction.initState() caught Exception " + e);
+					}
 				}
 			}
 			state.setAttribute(STATE_CHANNEL_URL, channelUrl);
@@ -305,7 +309,7 @@ public class NewsAction extends VelocityPortletPaneledAction
 		// is an update available?
 		boolean updateAvailable = false;
 
-		context.put("update_available", new Boolean(updateAvailable));
+		context.put("update_available", Boolean.valueOf(updateAvailable));
 
 		return (String) getContext(rundata).get("template") + "-Control";
 		// return null;
@@ -368,7 +372,13 @@ public class NewsAction extends VelocityPortletPaneledAction
 		String newChannelTitle = data.getParameters().getString(FORM_CHANNEL_TITLE);
 		String currentChannelTitle = (String) state.getAttribute(STATE_CHANNEL_TITLE);
 
-		if (StringUtil.trimToNull(newChannelTitle) != null && !newChannelTitle.equals(currentChannelTitle))
+		if (StringUtil.trimToNull(newChannelTitle) == null) 
+		{
+			//TODO: add more verbose message; requires language pack addition
+			addAlert(state, rb.getString("cus.franam"));
+			return;			
+		}
+		else if (!newChannelTitle.equals(currentChannelTitle))
 		{
 			state.setAttribute(STATE_CHANNEL_TITLE, newChannelTitle);
 			if (Log.getLogger("chef").isDebugEnabled())
@@ -386,7 +396,13 @@ public class NewsAction extends VelocityPortletPaneledAction
 		String newPageTitle = data.getParameters().getString(FORM_PAGE_TITLE);
 		String currentPageTitle = (String) state.getAttribute(STATE_PAGE_TITLE);
 		
-		if (StringUtil.trimToNull(newPageTitle) !=null && !newPageTitle.equals(currentPageTitle))
+		if (StringUtil.trimToNull(newPageTitle) == null)
+		{
+			//TODO: add more verbose message; requires language pack addition
+			addAlert(state, rb.getString("cus.pagnam"));
+			return;			
+		}
+		else if (!newPageTitle.equals(currentPageTitle))	
 		{
 			SitePage p = SiteService.findPage(getCurrentSitePageId());
 			if (p.getTools() != null && p.getTools().size() == 1)
@@ -401,9 +417,20 @@ public class NewsAction extends VelocityPortletPaneledAction
 					SiteService.save(sEdit);
 					state.setAttribute(STATE_PAGE_TITLE, newPageTitle);
 				}
-				catch (Exception ignore)
+				catch (PermissionException e) 
 				{
+					if(Log.getLogger("chef").isDebugEnabled()) {
+						Log.debug("chef", " Caught Exception " + e + " user doesn't seem to have " +
+							"rights to update site: " + ToolManager.getCurrentPlacement().getContext());
+					}
 				}
+				catch (Exception e)
+				{	
+					//Probably will never happen unless the ToolManager returns bogus Site or null
+					if(Log.getLogger("chef").isDebugEnabled()) {
+						Log.debug("chef", "NewsAction.doUpdate() caught Exception " + e);
+					}
+				} 
 			}
 		}
 
