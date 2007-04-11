@@ -15,5 +15,6 @@
 	<classpathentry combineaccessrules="false" kind="src" path="/util-util"/>
 	<classpathentry combineaccessrules="false" kind="src" path="/component-api"/>
 	<classpathentry kind="var" path="MAVEN_REPO/rome/jars/rome-fetcher-0.7.jar"/>
+	<classpathentry kind="var" path="MAVEN_REPO/commons-codec/jars/commons-codec-1.3.jar"/>
 	<classpathentry kind="output" path="bin"/>
 </classpath>
