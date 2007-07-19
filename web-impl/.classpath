@@ -1,15 +1,15 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <classpath>
-	<classpathentry kind="src" path="impl/src/java"/>
-	<classpathentry kind="var" path="JRE_LIB" sourcepath="JRE_SRC"/>
-	<classpathentry kind="var" path="MAVEN_REPO/commons-logging/jars/commons-logging-1.0.4.jar"/>
-	<classpathentry combineaccessrules="false" kind="src" path="/message-api"/>
-	<classpathentry combineaccessrules="false" kind="src" path="/entity-api"/>
-	<classpathentry combineaccessrules="false" kind="src" path="/component-api"/>
-	<classpathentry combineaccessrules="false" kind="src" path="/util-api"/>
-	<classpathentry combineaccessrules="false" kind="src" path="/web-api"/>
-	<classpathentry combineaccessrules="false" kind="src" path="/site-api"/>
-	<classpathentry combineaccessrules="false" kind="src" path="/tool-api"/>
-	<classpathentry kind="var" path="MAVEN_REPO/commons-codec/jars/commons-codec-1.3.jar"/>
-	<classpathentry kind="output" path="bin"/>
+  <classpathentry kind="src" path="impl/src/java"/>
+  <classpathentry kind="var" path="JRE_LIB" sourcepath="JRE_SRC"/>
+  <classpathentry kind="var" path="M2_REPO/commons-logging/commons-logging/1.0.4/commons-logging-1.0.4.jar"/>
+  <classpathentry combineaccessrules="false" kind="src" path="/message-api"/>
+  <classpathentry combineaccessrules="false" kind="src" path="/entity-api"/>
+  <classpathentry combineaccessrules="false" kind="src" path="/component-api"/>
+  <classpathentry combineaccessrules="false" kind="src" path="/util-api"/>
+  <classpathentry combineaccessrules="false" kind="src" path="/web-api"/>
+  <classpathentry combineaccessrules="false" kind="src" path="/site-api"/>
+  <classpathentry combineaccessrules="false" kind="src" path="/tool-api"/>
+  <classpathentry kind="var" path="M2_REPO/commons-codec/commons-codec/1.3/commons-codec-1.3.jar"/>
+  <classpathentry kind="output" path="bin"/>
 </classpath>
