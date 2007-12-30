@@ -257,8 +257,8 @@ public class SakaiIFrame extends GenericPortlet {
             vHelper.doTemplate(vengine, "/vm/main.vm", context, out);
 
 	    Session session = SessionManager.getCurrentSession();
-	    session.setAttribute("sakai-maximized-url",source);
-System.out.println("Set sakai-maximized-url="+source);
+	    session.setAttribute("sakai:maximized-url",source);
+System.out.println("Set sakai:maximized-url="+source);
 
 
         } else {

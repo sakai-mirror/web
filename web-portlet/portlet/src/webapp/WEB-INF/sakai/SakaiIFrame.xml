@@ -13,6 +13,8 @@
 <!--
                 <configuration name="reset.button" value="false" type="final" />
 -->
+                <configuration name="sakai:portlet-pre-render" value="true" />
+
 
                 <category name="course" />
                 <category name="project" />
