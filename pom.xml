@@ -12,9 +12,9 @@
   <artifactId>web-base</artifactId>
   <packaging>pom</packaging>
   <scm>
-    <connection>scm:svn:https://source.sakaiproject.org/svn/web/trunk</connection>
-    <developerConnection>scm:svn:https://source.sakaiproject.org/svn/web/trunk</developerConnection>
-    <url>https://source.sakaiproject.org/svn/web/trunk</url>
+    <connection>scm:svn:https://source.sakaiproject.org/svn/web/branches/sakai-2.7.x</connection>
+    <developerConnection>scm:svn:https://source.sakaiproject.org/svn/web/branches/sakai-2.7.x</developerConnection>
+    <url>https://source.sakaiproject.org/svn/web/branches/sakai-2.7.x</url>
   </scm>
   <profiles>
     <profile>
