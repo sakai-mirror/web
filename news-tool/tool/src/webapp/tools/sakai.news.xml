@@ -7,7 +7,7 @@
 			title="News"
 			description="For viewing content from online sources.">
 
-		<configuration name="channel-url" value="http://www.sakaiproject.org/cms/index2.php?option=com_rss&amp;feed=RSS2.0&amp;no_html=1" />
+		<configuration name="channel-url" value="http://sakaiproject.org/feed" />
 
 		<category name="course" />
 		<category name="project" />
