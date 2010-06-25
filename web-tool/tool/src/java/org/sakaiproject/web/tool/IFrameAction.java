@@ -852,6 +852,7 @@ public class IFrameAction extends VelocityPortletPaneledAction
 				infoUrl = "http://" + infoUrl;
 			}
 			String description = StringUtil.trimToNull(data.getParameters().getString("description"));
+			description = FormattedText.escapeHtmlFormattedTextarea(description);
 
 			// update the site info
 			try
