@@ -10,6 +10,7 @@
 #if ($alertMessage)<div class="alertMessage">$tlang.getString("gen.alert") $validator.escapeHtml($alertMessage)</div>#end
 	 	<div class="wcwmenu"> ##style="padding:0; margin:3px -2em -1em  -2em">
 		<iframe 
+			title="$tlang.getString("gen.info.title.message")"
 			width="100%"
 			id="wciframe"
 			style="width:100%;padding:0 !important; height:$validator.escapeHtml($height)"
