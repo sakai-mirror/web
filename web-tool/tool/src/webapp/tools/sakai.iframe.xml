@@ -3,7 +3,7 @@
 <registration>
 
 	<tool
-			id="sakai.iframe"
+			id="sakai.xframe"
 			title="Web Content"
 			description="For accessing an external website within the site.">
 
