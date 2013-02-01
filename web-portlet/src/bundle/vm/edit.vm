@@ -65,11 +65,11 @@
 				<input type="checkbox" value="true" name="popup" id="opentrue" #if ($popup) checked="checked" #end  class="indnt1" />
 				<label for="opentrue">$tlang.getString("gen.info.pop")</label>
 		</p>
-	#end
 		<p class ="checkbox labelindnt">
 				<input type="checkbox" value="true" name="maximize" id="maximize" #if ($maximize) checked="checked" #end  class="indnt1" />
 				<label for="maximize">$tlang.getString("gen.info.maximize")</label>
 		</p>
+	#end
 
 		<p class="act">
 			<input type="submit" accesskey ="s" class="active" name="$doUpdate" value="$tlang.getString('gen.save')" />

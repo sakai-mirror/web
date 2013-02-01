@@ -7,9 +7,9 @@
     <version>2.10-SNAPSHOT</version>
     <relativePath>../pom.xml</relativePath>
   </parent>
-  <name>web-portlet</name>
+  <name>sakai-web-portlet</name>
   <groupId>org.sakaiproject</groupId>
-  <artifactId>web-portlet</artifactId>
+  <artifactId>sakai-web-portlet</artifactId>
   <organization>
     <name>The Sakai Foundation</name>
     <url>http://sakaiproject.org/</url>
