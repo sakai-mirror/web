@@ -13,7 +13,7 @@
 		<p class="shorttext indnt1">
 			<span class="reqStar">*</span>
 			<label for="title"> $tlang.getString("gen.title")</label>
-			<input type="text" id="title" name="title" value="$!validator.escapeHtml($title)" /><br />
+			<input type="text" id="title" name="title" value="$!validator.escapeHtml($title)" maxlength="$max_length_title" /><br />
 		</p>	
 		<p class="shorttext indnt1">
 			<label for="height">$tlang.getString("gen.height")</label>
@@ -36,7 +36,7 @@
 					<tr>
 						<td>
 						<textarea id="description" name="description" rows="5" cols="40" tabindex="1" wrap="virtual">$!description</textarea>
-						#chef_setupformattedtextarea("description")
+							#chef_setupformattedtextareaparams("description" "300" "99%" "largecompressed")
 						</td>
 					</tr>
 			</table>
@@ -44,7 +44,7 @@
 
 		<p class="shorttext indnt1">
 			<label for="infourl">$tlang.getString("gen.info.url")</label>
-			<input type="text" name="infourl" id="infourl" value="$!info_url" size="40" />
+			<input type="text" name="infourl" id="infourl" value="$!validator.escapeHtml($info_url)" size="40" maxlength="$max_length_info_url"/>
 		</p>
 		<p class="instruction">$tlang.getString("gen.info.url.msg")</p>
 
@@ -52,5 +52,6 @@
 			<input type="submit" accesskey ="s" class="active" name="$doUpdate" value="$tlang.getString('gen.save')" />
 			<input type="submit" accesskey ="x" name="$doCancel" value="$tlang.getString('gen.cancel')" />
 		</p>
+		<input type="hidden" name="sakai_csrf_token" value="$sakai_csrf_token" />
 	</form>
 </div>

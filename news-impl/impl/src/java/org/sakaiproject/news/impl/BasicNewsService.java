@@ -3,18 +3,18 @@
  * $Id$
  ***********************************************************************************
  *
- * Copyright (c) 2003, 2004, 2005, 2006 The Sakai Foundation.
- * 
- * Licensed under the Educational Community License, Version 1.0 (the "License"); 
- * you may not use this file except in compliance with the License. 
+ * Copyright (c) 2003, 2004, 2005, 2006, 2007, 2008 The Sakai Foundation
+ *
+ * Licensed under the Educational Community License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
- * 
- *      http://www.opensource.org/licenses/ecl1.php
- * 
- * Unless required by applicable law or agreed to in writing, software 
- * distributed under the License is distributed on an "AS IS" BASIS, 
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. 
- * See the License for the specific language governing permissions and 
+ *
+ *       http://www.opensource.org/licenses/ECL-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
  * limitations under the License.
  *
  **********************************************************************************/
@@ -27,6 +27,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.Stack;
+import java.util.Vector;
 
 import org.apache.commons.codec.binary.Base64;
 import org.apache.commons.logging.Log;
@@ -164,7 +165,7 @@ public class BasicNewsService implements NewsService, EntityTransferrer
 		// synchronize this part??? %%%%%%
 		if (!m_storage.containsKey(source))
 		{
-			BasicNewsChannel channel = new BasicNewsChannel(source);
+			BasicNewsChannel channel = new BasicNewsChannel(source, getUserAgent());
 			m_storage.put(source, channel, DEFAULT_EXPIRATION);
 		}
 
@@ -428,7 +429,6 @@ public class BasicNewsService implements NewsService, EntityTransferrer
 			catch(Exception e)
 			{
 				M_log.error("errors in merge for BasicNewsService");
-				e.printStackTrace();
 			}
 		}
 
@@ -591,7 +591,29 @@ public class BasicNewsService implements NewsService, EntityTransferrer
 							String toolTitle = toolConfig.getTitle();
 							String pageTitle = currPage.getTitle();
 
-							if(toolTitle != null && toolTitle.length() >0 && pageTitle !=null && pageTitle.length() > 0) 
+							// in some cases the new site already has all of this. so make
+							// sure we don't make a duplicate
+
+							boolean skip = false;
+
+							String[] toolIds = {TOOL_ID};
+							Collection<ToolConfiguration> toolConfs = toSite.getTools(TOOL_ID);
+							if (toolConfs != null && !toolConfs.isEmpty())  {
+							    for (ToolConfiguration config: toolConfs) {
+								if (config.getToolId().equals(TOOL_ID)) {
+								    SitePage p = config.getContainingPage();
+								    if (pageTitle != null &&
+									pageTitle.equals(p.getTitle()) &&
+									newsUrl != null &&
+									newsUrl.equals(config.getPlacementConfig().getProperty(NEWS_URL_PROP))) {
+									skip = true;
+									break;
+								    }
+								}
+							    }
+							}
+							
+							if(!skip && toolTitle != null && toolTitle.length() >0 && pageTitle !=null && pageTitle.length() > 0) 
 							{
 								Tool tr = ToolManager.getTool(TOOL_ID);
 								SitePage page = toSite.addPage(); 
@@ -670,7 +692,7 @@ public class BasicNewsService implements NewsService, EntityTransferrer
 		if (value.length() == 0) return null;
 		return value;
 	}
-	
+
 	public void transferCopyEntities(String fromContext, String toContext, List ids, boolean cleanup)
 	{	
 		try
@@ -678,18 +700,16 @@ public class BasicNewsService implements NewsService, EntityTransferrer
 			if(cleanup == true)
 			{
 				// retrieve all of the news tools to remove
-				
 				Site toSite = SiteService.getSite(toContext);
-				
+		
 				List toSitePages = toSite.getPages();
-
 				if (toSitePages != null && !toSitePages.isEmpty()) 
 				{
+					Vector removePageIds = new Vector();
 					Iterator pageIter = toSitePages.iterator();
 					while (pageIter.hasNext()) 
 					{
 						SitePage currPage = (SitePage) pageIter.next();
-
 						List toolList = currPage.getTools();
 						Iterator toolIter = toolList.iterator();
 						while (toolIter.hasNext()) 
@@ -699,12 +719,15 @@ public class BasicNewsService implements NewsService, EntityTransferrer
 
 							if (toolId.equals(TOOL_ID)) 
 							{
-								toolConfig.getPlacementConfig().setProperty(NEWS_URL_PROP, null);
-								toolConfig.setTitle(null);
-								currPage.setTitle(null);
-
-							}
-						}
+								removePageIds.add(toolConfig.getPageId());
+							}	
+						}	
+					}
+					for (int i = 0; i < removePageIds.size(); i++)
+					{
+						String removeId = (String) removePageIds.get(i);
+						SitePage sitePage = toSite.getPage(removeId);
+						toSite.removePage(sitePage);
 					}
 				}
 				SiteService.save(toSite);
@@ -721,5 +744,13 @@ public class BasicNewsService implements NewsService, EntityTransferrer
 			M_log.info("News transferCopyEntities Error" + e);
 		}
 		transferCopyEntities(fromContext, toContext, ids);
+	}
+	
+	/**
+	 * Get the user agent to use for web requests.
+	 */
+	protected String getUserAgent()
+	{
+		return "Sakai/"+ ServerConfigurationService.getString("version.sakai")+ " ("+ TOOL_ID+ ")";
 	}
 }

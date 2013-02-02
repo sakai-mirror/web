@@ -52,12 +52,13 @@
 					type="text" 
 					name="$formfield_channel_url" 
 					id="$formfield_channel_url" 
-					value="$!current_channel_url"
+					value="$validator.escapeHtml($!current_channel_url)"
 					size="50" />
 			</p>
 			<p class="act">
 				<input type="submit" class="active" name="$form-submit" value="$tlang.getString("gen.sav")" accesskey="s" />
 				<input type="submit" name="$form-cancel" value="$tlang.getString("gen.can")" accesskey="x" />
 			</p>
+			<input type="hidden" name="sakai_csrf_token" value="$sakai_csrf_token" />
 		</form>
 	</div>

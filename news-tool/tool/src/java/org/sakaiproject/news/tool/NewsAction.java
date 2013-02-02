@@ -3,18 +3,18 @@
  * $Id$
  ***********************************************************************************
  *
- * Copyright (c) 2003, 2004, 2005, 2006 The Sakai Foundation.
- * 
- * Licensed under the Educational Community License, Version 1.0 (the "License"); 
- * you may not use this file except in compliance with the License. 
+ * Copyright (c) 2003, 2004, 2005, 2006, 2007, 2008 The Sakai Foundation
+ *
+ * Licensed under the Educational Community License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
- * 
- *      http://www.opensource.org/licenses/ecl1.php
- * 
- * Unless required by applicable law or agreed to in writing, software 
- * distributed under the License is distributed on an "AS IS" BASIS, 
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. 
- * See the License for the specific language governing permissions and 
+ *
+ *       http://www.opensource.org/licenses/ECL-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
  * limitations under the License.
  *
  **********************************************************************************/
@@ -23,7 +23,9 @@ package org.sakaiproject.news.tool;
 
 import java.net.URL;
 import java.util.List;
+import java.util.Properties;
 import java.util.Vector;
+import java.text.DateFormat;
 
 import org.sakaiproject.cheftool.Context;
 import org.sakaiproject.cheftool.JetspeedRunData;
@@ -50,7 +52,10 @@ import org.sakaiproject.tool.api.ToolSession;
 import org.sakaiproject.tool.cover.SessionManager;
 import org.sakaiproject.tool.cover.ToolManager;
 import org.sakaiproject.util.ResourceLoader;
-import org.sakaiproject.util.StringUtil;
+import org.sakaiproject.util.FormattedText;
+import org.sakaiproject.util.Validator;
+import org.apache.commons.lang.StringUtils;
+import org.sakaiproject.time.cover.TimeService;
 
 /**
  * <p>
@@ -86,24 +91,29 @@ public class NewsAction extends VelocityPortletPaneledAction
 	private static final String FULL_STORY_TEXT = "full_story";
 
 	/** Basic feed access event. */
-	private static final String FEED_ACCESS = "news.read";
+	protected static final String FEED_ACCESS = "news.read";
 	
 	/** Basic feed update event. */
-	private static final String FEED_UPDATE = "news.revise";
+	protected static final String FEED_UPDATE = "news.revise";
+	
+	protected static final String STATE_DETECT_REGISTERED_EVENT = "detectRegisteredEvent";
 	
 	/**
 	 * Populate the state object, if needed.
 	 */
 	protected void initState(SessionState state, VelocityPortlet portlet, JetspeedRunData rundata)
 	{
+        // TODO: we might want to keep this from running for each request - but by letting it we get fresh info each time... -ggolden
+        super.initState(state, portlet, rundata);
+
 		PortletConfig config = portlet.getPortletConfig();
+		
+		Placement placement = ToolManager.getCurrentPlacement();
 
 		// detect that we have not done this, yet
 		if (state.getAttribute(STATE_CHANNEL_TITLE) == null)
 		{
-			state.setAttribute(STATE_CHANNEL_TITLE, config.getTitle());
-
-			String channelUrl = StringUtil.trimToNull(config.getInitParameter(PARAM_CHANNEL_URL));
+			String channelUrl = StringUtils.trimToNull(config.getInitParameter(PARAM_CHANNEL_URL));
 			if (channelUrl == null)
 			{
 				channelUrl = "";
@@ -112,11 +122,10 @@ public class NewsAction extends VelocityPortletPaneledAction
 
 		}
 		
-		if (state.getAttribute(STATE_PAGE_TITLE) == null)
-		{
-			SitePage p = SiteService.findPage(getCurrentSitePageId());
-			state.setAttribute(STATE_PAGE_TITLE, p.getTitle());
-		}
+		// always set the titles because they might have been changed in Page Order Helper.
+		state.setAttribute(STATE_CHANNEL_TITLE, config.getTitle());
+		SitePage p = SiteService.findPage(getCurrentSitePageId());
+		state.setAttribute(STATE_PAGE_TITLE, p.getTitle());
 
 		if (state.getAttribute(GRAPHIC_VERSION_TEXT) == null)
 		{
@@ -142,21 +151,6 @@ public class NewsAction extends VelocityPortletPaneledAction
 	 */
 	public String buildMainPanelContext(VelocityPortlet portlet, Context context, RunData rundata, SessionState state)
 	{
-		// // if we are in edit permissions...
-		// String helperMode = (String) state.getAttribute(PermissionsAction.STATE_MODE);
-		// if (helperMode != null)
-		// {
-		// String template = PermissionsAction.buildHelperContext(portlet, context, rundata, state);
-		// if (template == null)
-		// {
-		// addAlert(state, rb.getString("theisone"));
-		// }
-		// else
-		// {
-		// return template;
-		// }
-		// }
-
 		context.put("tlang", rb);
 
 		String mode = (String) state.getAttribute(STATE_MODE);
@@ -195,27 +189,41 @@ public class NewsAction extends VelocityPortletPaneledAction
 		catch (NewsConnectionException e)
 		{
 			// display message
-			addAlert(state, rb.getString("unavailable") + "\n\n[" + e.getLocalizedMessage() + "]");
+			addAlert(state, rb.getFormattedMessage("unavailable", new Object[]{e.getLocalizedMessage()}));
 		}
 		catch (NewsFormatException e)
 		{
 			// display message
-			addAlert(state, rb.getString("unavailable") + "\n\n[" + e.getLocalizedMessage() + "]");
+			addAlert(state, rb.getFormattedMessage("unavailable", new Object[]{e.getLocalizedMessage()}));
 		}
 		catch (Exception e)
 		{
 			// display message
-			addAlert(state, rb.getString("unavailable") + "\n\n[" + e.getLocalizedMessage() + "]");
+			addAlert(state, rb.getFormattedMessage("unavailable", new Object[]{e.getLocalizedMessage()}));
 		}
 
 		context.put("channel", channel);
 		context.put("news_items", items);
- 
+		DateFormat df = DateFormat.getDateTimeInstance(DateFormat.MEDIUM, DateFormat.SHORT, new ResourceLoader().getLocale());	
+		df.setTimeZone(TimeService.getLocalTimeZone());
+		context.put("dateFormat", df);
 		try 
 		{
-			EventTrackingService.post(EventTrackingService.newEvent(FEED_ACCESS, "/news/site/" +
-				SiteService.getSite(ToolManager.getCurrentPlacement().getContext()).getId() +
-				"/placement/" + SessionManager.getCurrentToolSession().getPlacementId(), false));
+			// tracking event
+			if(state.getAttribute(FEED_ACCESS) == null) {
+				if(state.getAttribute(STATE_DETECT_REGISTERED_EVENT) == null) {
+					// is News tool
+					EventTrackingService.post(EventTrackingService.newEvent(FEED_ACCESS, "/news/site/" +
+						SiteService.getSite(ToolManager.getCurrentPlacement().getContext()).getId() +
+						"/placement/" + SessionManager.getCurrentToolSession().getPlacementId(), false));
+				}
+			}
+			else {
+				// extends News tool
+				EventTrackingService.post(EventTrackingService.newEvent((String)state.getAttribute(FEED_ACCESS), "/news/site/" +
+						SiteService.getSite(ToolManager.getCurrentPlacement().getContext()).getId() +
+						"/placement/" + SessionManager.getCurrentToolSession().getPlacementId(), false));
+			}
 			
 		} 
 		catch (IdUnusedException e)
@@ -285,71 +293,61 @@ public class NewsAction extends VelocityPortletPaneledAction
 		SessionState state = ((JetspeedRunData) data).getPortletSessionState(peid);
 
 		String newChannelTitle = data.getParameters().getString(FORM_CHANNEL_TITLE);
-		String currentChannelTitle = (String) state.getAttribute(STATE_CHANNEL_TITLE);
 
-		if (StringUtil.trimToNull(newChannelTitle) == null) 
+		if (StringUtils.trimToNull(newChannelTitle) == null) 
 		{
 			//TODO: add more verbose message; requires language pack addition
 			addAlert(state, rb.getString("cus.franam"));
 			return;			
 		}
-		else if (!newChannelTitle.equals(currentChannelTitle))
-		{
-			state.setAttribute(STATE_CHANNEL_TITLE, newChannelTitle);
-			if (Log.getLogger("chef").isDebugEnabled())
-				Log.debug("chef", this + ".doUpdate(): newChannelTitle: " + newChannelTitle);
+		state.setAttribute(STATE_CHANNEL_TITLE, newChannelTitle);
+		if (Log.getLogger("chef").isDebugEnabled())
+			Log.debug("chef", this + ".doUpdate(): newChannelTitle: " + newChannelTitle);
 
-			// update the tool config
-			Placement placement = ToolManager.getCurrentPlacement();
-			placement.setTitle(newChannelTitle);
-
-			// deliver an update to the title panel (to show the new title)
-			String titleId = titlePanelUpdateId(peid);
-			schedulePeerFrameRefresh(titleId);
-		}
+		// update the tool config
+		Placement placement = ToolManager.getCurrentPlacement();
+		placement.setTitle(newChannelTitle);
 		
-		String newPageTitle = data.getParameters().getString(FORM_PAGE_TITLE);
-		String currentPageTitle = (String) state.getAttribute(STATE_PAGE_TITLE);
-		
-		SitePage p = SiteService.findPage(getCurrentSitePageId());
-		// if the news tool is the only tool on the page, then we can edit the page title
-		if (p.getTools() != null && p.getTools().size() == 1)
+		try
 		{
-			if (StringUtil.trimToNull(newPageTitle) == null)
+			Site sEdit = SiteService.getSite(ToolManager.getCurrentPlacement().getContext());
+			SitePage pEdit = sEdit.getPage(getCurrentSitePageId());
+			String newPageTitle = data.getParameters().getString(FORM_PAGE_TITLE);
+			pEdit.setTitleCustom(true);
+			
+			// if the news tool is the only tool on the page, then we can edit the page title
+			if (pEdit.getTools() != null && pEdit.getTools().size() == 1)
 			{
-				//TODO: add more verbose message; requires language pack addition
-				addAlert(state, rb.getString("cus.pagnam"));
-				return;
-			}
-			else if (!newPageTitle.equals(currentPageTitle))
-			{
-				// if this is the only tool on that page, update the page's title also
-				try
+				if (StringUtils.trimToNull(newPageTitle) == null)
 				{
-					// TODO: save site page title? -ggolden
-					Site sEdit = SiteService.getSite(ToolManager.getCurrentPlacement().getContext());
-					SitePage pEdit = sEdit.getPage(p.getId());
+					//TODO: add more verbose message; requires language pack addition
+					addAlert(state, rb.getString("cus.pagnam"));
+				}
+				else
+				{
+					// if this is the only tool on that page, update the page's title also
 					pEdit.setTitle(newPageTitle);
-					SiteService.save(sEdit);
 					state.setAttribute(STATE_PAGE_TITLE, newPageTitle);
 				}
-				catch (PermissionException e) 
-				{
-					if(Log.getLogger("chef").isDebugEnabled()) {
-						Log.debug("chef", " Caught Exception " + e + " user doesn't seem to have " +
-							"rights to update site: " + ToolManager.getCurrentPlacement().getContext());
-					}
-				}
-				catch (Exception e)
-				{	
-					//Probably will never happen unless the ToolManager returns bogus Site or null
-					if(Log.getLogger("chef").isDebugEnabled()) {
-						Log.debug("chef", "NewsAction.doUpdate() caught Exception " + e);
-					}
-				} 
+				
+			}
+			SiteService.save(sEdit);
+		}
+		catch (PermissionException e) 
+		{
+			if(Log.getLogger("chef").isDebugEnabled()) {
+				Log.debug("chef", " Caught Exception " + e + " user doesn't seem to have " +
+							 "rights to update site: " + ToolManager.getCurrentPlacement().getContext());
 			}
 		}
-
+		catch (Exception e)
+		{	
+			//Probably will never happen unless the ToolManager returns bogus Site or null
+			if(Log.getLogger("chef").isDebugEnabled()) {
+				Log.debug("chef", "NewsAction.doUpdate() caught Exception " + e);
+			}
+		} 
+		
 		String newChannelUrl = data.getParameters().getString(FORM_CHANNEL_URL);
 		String currentChannelUrl = (String) state.getAttribute(STATE_CHANNEL_URL);
 
@@ -375,7 +373,6 @@ public class NewsAction extends VelocityPortletPaneledAction
 					state.setAttribute(STATE_CHANNEL_URL, url.toExternalForm());
 	
 					// update the tool config
-					Placement placement = ToolManager.getCurrentPlacement();
 					placement.getPlacementConfig().setProperty(PARAM_CHANNEL_URL, url.toExternalForm());
 
 				}
@@ -383,27 +380,39 @@ public class NewsAction extends VelocityPortletPaneledAction
 			catch (NewsConnectionException e)
 			{
 				// display message
-				addAlert(state, newChannelUrl + " " + rb.getString("invalidfeed"));
+				addAlert(state, rb.getFormattedMessage("invalidfeed", new Object[]{newChannelUrl}));
 				return;
 			}
 			catch (NewsFormatException e)
 			{
 				// display message
-				addAlert(state, newChannelUrl + " " + rb.getString("invalidfeed"));
+				addAlert(state, rb.getFormattedMessage("invalidfeed", new Object[]{newChannelUrl}));
 				return;
 			}
 			catch (Exception e)
 			{
 				// display message
-				addAlert(state, newChannelUrl + " " + rb.getString("invalidfeed"));
+				addAlert(state, rb.getFormattedMessage("invalidfeed", new Object[]{newChannelUrl}));
 				return;
 			}
 
 			try 
 			{
-				EventTrackingService.post(EventTrackingService.newEvent(FEED_UPDATE, "/news/site/" +
-					SiteService.getSite(ToolManager.getCurrentPlacement().getContext()).getId() +
-					"/placement/" + SessionManager.getCurrentToolSession().getPlacementId(), true));
+				// tracking event
+				if(state.getAttribute(FEED_UPDATE) == null) {
+					if(state.getAttribute(STATE_DETECT_REGISTERED_EVENT) == null) {
+						// is News tool
+						EventTrackingService.post(EventTrackingService.newEvent(FEED_UPDATE, "/news/site/" +
+							SiteService.getSite(ToolManager.getCurrentPlacement().getContext()).getId() +
+							"/placement/" + SessionManager.getCurrentToolSession().getPlacementId(), true));
+					}
+				}
+				else {
+					// extends News tool
+					EventTrackingService.post(EventTrackingService.newEvent((String)state.getAttribute(FEED_UPDATE) , "/news/site/" +
+							SiteService.getSite(ToolManager.getCurrentPlacement().getContext()).getId() +
+							"/placement/" + SessionManager.getCurrentToolSession().getPlacementId(), true));
+				}
 				
 			} 
 			catch (IdUnusedException e)

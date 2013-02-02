@@ -3,30 +3,35 @@
  * $Id$
  ***********************************************************************************
  *
- * Copyright (c) 2003, 2004, 2005, 2006 The Sakai Foundation.
- * 
- * Licensed under the Educational Community License, Version 1.0 (the "License"); 
- * you may not use this file except in compliance with the License. 
+ * Copyright (c) 2003, 2004, 2005, 2006, 2007, 2008 The Sakai Foundation
+ *
+ * Licensed under the Educational Community License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
- * 
- *      http://www.opensource.org/licenses/ecl1.php
- * 
- * Unless required by applicable law or agreed to in writing, software 
- * distributed under the License is distributed on an "AS IS" BASIS, 
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. 
- * See the License for the specific language governing permissions and 
+ *
+ *       http://www.opensource.org/licenses/ECL-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
  * limitations under the License.
  *
  **********************************************************************************/
 
 package org.sakaiproject.web.tool;
 
+import java.io.File;
+import java.net.URLEncoder;
 import java.util.ArrayList;
 import java.util.Iterator;
+import java.util.Locale;
 import java.util.Properties;
-import java.util.Collections;
-import java.net.URLEncoder;
 
+import org.apache.commons.lang.StringUtils;
+import org.apache.commons.logging.Log;
+import org.apache.commons.logging.LogFactory;
+import org.apache.commons.validator.UrlValidator;
 import org.sakaiproject.authz.api.AuthzGroup;
 import org.sakaiproject.authz.api.GroupNotDefinedException;
 import org.sakaiproject.authz.api.Role;
@@ -36,9 +41,12 @@ import org.sakaiproject.cheftool.JetspeedRunData;
 import org.sakaiproject.cheftool.RunData;
 import org.sakaiproject.cheftool.VelocityPortlet;
 import org.sakaiproject.cheftool.VelocityPortletPaneledAction;
+import org.sakaiproject.component.cover.ComponentManager;
 import org.sakaiproject.component.cover.ServerConfigurationService;
 import org.sakaiproject.entity.api.Reference;
 import org.sakaiproject.entity.cover.EntityManager;
+import org.sakaiproject.event.api.EventTrackingService;
+import org.sakaiproject.event.api.NotificationService;
 import org.sakaiproject.event.api.SessionState;
 import org.sakaiproject.exception.IdUnusedException;
 import org.sakaiproject.site.api.Site;
@@ -50,29 +58,36 @@ import org.sakaiproject.tool.api.Session;
 import org.sakaiproject.tool.api.ToolSession;
 import org.sakaiproject.tool.cover.SessionManager;
 import org.sakaiproject.tool.cover.ToolManager;
-import org.sakaiproject.util.ResourceLoader;
-import org.sakaiproject.util.StringUtil;
 import org.sakaiproject.user.api.User;
 import org.sakaiproject.user.api.UserNotDefinedException;
 import org.sakaiproject.user.cover.UserDirectoryService;
+import org.sakaiproject.util.FormattedText;
+import org.sakaiproject.util.ResourceLoader;
 
 /**
  * <p>
  * IFrameAction is the Sakai tool to place any web content in an IFrame on the page.
  * </p>
  * <p>
- * Three special modes are supported - these pick the URL content from special places:
+ * Four special modes are supported - these pick the URL content from special places:
  * </p>
  * <ul>
  * <li>"site" - to show the services "server.info.url" configuration URL setting</li>
  * <li>"workspace" - to show the configured "myworkspace.info.url" URL, introducing a my workspace to users</li>
  * <li>"worksite" - to show the current site's "getInfoUrlFull()" setting</li>
+ * <li>"annotatedurl" - to show a link to a configured target url, with a description following the link. Aid in redirection.</li>
  * </ul>
  */
 public class IFrameAction extends VelocityPortletPaneledAction
 {
-
-
+	private static Log M_log = LogFactory.getLog(IFrameAction.class);
+	
+	/** Event for accessing the web-content tool */
+	protected final static String EVENT_ACCESS_WEB_CONTENT = "webcontent.read";
+	
+	/** Event for modifying the web-content tool configuration */
+	protected final static String EVENT_REVISE_WEB_CONTENT = "webcontent.revise";
+	
 	/** Resource bundle using current language locale */
 	protected static ResourceLoader rb = new ResourceLoader("iframe");
 
@@ -90,6 +105,15 @@ public class IFrameAction extends VelocityPortletPaneledAction
 
 	/** The special attribute, in state, config and context. */
 	protected final static String SPECIAL = "special";
+	
+	/** The Annotated URL Tool's url attribute, in state, config and context. */
+	protected final static String TARGETPAGE_URL = "TargetPageUrl";
+	
+	/** The Annotated URL Tool's name attribute, in state, config and context. */
+	protected final static String TARGETPAGE_NAME = "TargetPageName";
+	
+	/** The Annotated URL Tool's text attribute, in state, config and context. */
+	protected final static String ANNOTATED_TEXT = "desp";
 
 	/** Support an external url defined in sakai.properties, in state, config and context. */
 	protected final static String SAKAI_PROPERTIES_URL_KEY = "sakai.properties.url.key";
@@ -99,6 +123,9 @@ public class IFrameAction extends VelocityPortletPaneledAction
 	
 	/** Special value for site. */
 	protected final static String SPECIAL_SITE = "site";
+	
+	/** Special value for Annotated URL Tool. */
+	protected final static String SPECIAL_ANNOTATEDURL = "annotatedurl";
 
 	/** Special value for myworkspace. */
 	protected final static String SPECIAL_WORKSPACE = "workspace";
@@ -130,7 +157,9 @@ public class IFrameAction extends VelocityPortletPaneledAction
 	
 	private static final String FORM_TOOL_TITLE = "title-of-tool";
 
+	private static final int MAX_TITLE_LENGTH = 99;
 	
+	private static final int MAX_SITE_INFO_URL_LENGTH = 255;
 
 	/**
 	 * Expand macros to insert session information into the URL?
@@ -156,9 +185,32 @@ public class IFrameAction extends VelocityPortletPaneledAction
 	
 	private static final String IFRAME_ALLOWED_MACROS_PROPERTY = "iframe.allowed.macros";
 	
-	private static final String MACRO_DEFAULT_ALLOWED = "${USER_ID},${USER_EID},${USER_FIRST_NAME},${USER_LAST_NAME},${SITE_ID},${USER_ROLE},${SESSION_ID}";
+	private static final String MACRO_DEFAULT_ALLOWED = "${USER_ID},${USER_EID},${USER_FIRST_NAME},${USER_LAST_NAME},${SITE_ID},${USER_ROLE}";
 	
 	private static ArrayList allowedMacrosList;
+	// initialize list of approved macros for replacement within URL
+	static
+	{
+		allowedMacrosList = new ArrayList();
+		
+		final String allowedMacros = 
+			ServerConfigurationService.getString(IFRAME_ALLOWED_MACROS_PROPERTY, MACRO_DEFAULT_ALLOWED);
+			
+		String parts[] = allowedMacros.split(",");
+		
+		if(parts != null) {
+		
+			for(int i = 0; i < parts.length; i++) {
+			
+				allowedMacrosList.add(parts[i]);
+			
+			}
+		
+		}
+	}
+	
+	/** For tracking event */
+	private static EventTrackingService m_eventTrackingService = null;
 	
 	/**
 	 * Populate the state with configuration settings
@@ -195,28 +247,6 @@ public class IFrameAction extends VelocityPortletPaneledAction
 		// set the special setting
 		String special = config.getProperty(SPECIAL);
 		
-		// initialize list of approved macros for replacement within URL
-		if (allowedMacrosList == null) {
-		
-			allowedMacrosList = new ArrayList();
-		
-			final String allowedMacros = 
-				ServerConfigurationService.getString(IFRAME_ALLOWED_MACROS_PROPERTY, MACRO_DEFAULT_ALLOWED);
-				
-			String parts[] = allowedMacros.split(",");
-			
-			if(parts != null) {
-			
-				for(int i = 0; i < parts.length; i++) {
-				
-					allowedMacrosList.add(parts[i]);
-				
-				}
-			
-			}
-			
-		}
-		
 		final String sakaiPropertiesUrlKey = config.getProperty(SAKAI_PROPERTIES_URL_KEY);
 		
 		final String hideOptions = config.getProperty(HIDE_OPTIONS);
@@ -236,6 +266,10 @@ public class IFrameAction extends VelocityPortletPaneledAction
 			{
 				special = SPECIAL_WORKSITE;
 			}
+			else if ("true".equals(config.getProperty("annotatedurl")))
+			{
+				special = SPECIAL_ANNOTATEDURL;
+			}
 		}
 
 		state.removeAttribute(SPECIAL);
@@ -252,12 +286,13 @@ public class IFrameAction extends VelocityPortletPaneledAction
 		}
 
 		// set the source url setting
-		String source = StringUtil.trimToNull(config.getProperty(SOURCE));
+		String source = StringUtils.trimToNull(config.getProperty(SOURCE));
+		
 
 		// check for an older way the ChefWebPagePortlet took parameters, converting to our "source" value
 		if (source == null)
 		{
-			source = StringUtil.trimToNull(config.getProperty("url"));
+			source = StringUtils.trimToNull(config.getProperty("url"));
 		}
 
 		// store the raw as-configured source url
@@ -269,11 +304,28 @@ public class IFrameAction extends VelocityPortletPaneledAction
 
 		// compute working URL, modified from the configuration URL if special
 		String url = sourceUrl(special, source, placement.getContext(), macroExpansion, passPid, placement.getId(), sakaiPropertiesUrlKey);
+
+        // System.out.println("special="+special+" source="+source+" pgc="+placement.getContext()+" macroExpansion="+macroExpansion+" passPid="+passPid+" PGID="+placement.getId()+" sakaiPropertiesUrlKey="+sakaiPropertiesUrlKey+" url="+url);
+
 		state.setAttribute(URL, url);
 
 		// set the height
 		state.setAttribute(HEIGHT, config.getProperty(HEIGHT, "600px"));
-
+		
+		
+		state.setAttribute(ANNOTATED_TEXT, config.getProperty(ANNOTATED_TEXT, ""));
+		
+		
+		if(config.getProperty(TARGETPAGE_URL)!=null)
+				{
+			// set Target page url for Annotated URL Tool
+		state.setAttribute(TARGETPAGE_URL,config.getProperty(TARGETPAGE_URL));
+		
+		
+		// set Target page name for Annotated URL Tool
+		state.setAttribute(TARGETPAGE_NAME,config.getProperty(TARGETPAGE_NAME));
+				}
+		
 		// set the title
 		state.setAttribute(TITLE, placement.getTitle());
 		
@@ -281,6 +333,20 @@ public class IFrameAction extends VelocityPortletPaneledAction
 		{
 			SitePage p = SiteService.findPage(getCurrentSitePageId());
 			state.setAttribute(STATE_PAGE_TITLE, p.getTitle());
+		}
+		
+		// if events found in tool registration file put them in state
+		if((StringUtils.trimToNull(config.getProperty(EVENT_ACCESS_WEB_CONTENT)) != null)) {
+			state.setAttribute(EVENT_ACCESS_WEB_CONTENT, config.getProperty(EVENT_ACCESS_WEB_CONTENT));
+		}
+		if((StringUtils.trimToNull(config.getProperty(EVENT_REVISE_WEB_CONTENT)) != null)) {
+			state.setAttribute(EVENT_REVISE_WEB_CONTENT, config.getProperty(EVENT_REVISE_WEB_CONTENT));
+		}
+
+		
+		if (m_eventTrackingService == null)
+		{
+			m_eventTrackingService = (EventTrackingService) ComponentManager.get("org.sakaiproject.event.api.EventTrackingService");
 		}
 		
 	}
@@ -305,25 +371,53 @@ public class IFrameAction extends VelocityPortletPaneledAction
 		return null;
 	}
 
+	/** Construct and return localized filepath, if it exists
+	 **/
+	private String getLocalizedURL(String property) {
+		String filename = ServerConfigurationService.getString(property);
+		if ( filename == null || filename.trim().length()==0 )
+			return filename;
+		else
+			filename = filename.trim();
+			
+		int extIndex = filename.lastIndexOf(".") >= 0 ? filename.lastIndexOf(".") : filename.length()-1;
+		String ext = filename.substring(extIndex);
+		String doc = filename.substring(0,extIndex);
+		Locale locale = new ResourceLoader().getLocale();
+
+		if (locale != null){
+			// check if localized file exists for current language/locale/variant
+			String localizedFile = doc + "_" + locale.toString() + ext;
+			String filePath = getServletConfig().getServletContext().getRealPath( ".."+localizedFile );
+			if ( (new File(filePath)).exists() )
+				return localizedFile;
+			
+			// otherwise, check if localized file exists for current language
+			localizedFile = doc + "_" + locale.getLanguage() + ext;
+			filePath = getServletConfig().getServletContext().getRealPath( ".."+localizedFile );
+			if ( (new File(filePath)).exists() )
+				return localizedFile;
+		}
+		return filename;
+	}
+
 	/**
 	 * Compute the actual URL we will used, based on the configuration special and source URLs
 	 */
 	protected String sourceUrl(String special, String source, String context, boolean macroExpansion, boolean passPid, String pid, String sakaiPropertiesUrlKey)
 	{
-		String rv = StringUtil.trimToNull(source);
+		String rv = StringUtils.trimToNull(source);
 
 		// if marked for "site", use the site intro from the properties
 		if (SPECIAL_SITE.equals(special))
 		{
-			// set the url to the site config'ed url
-			rv = StringUtil.trimToNull(ServerConfigurationService.getString("server.info.url"));
+			rv = StringUtils.trimToNull(getLocalizedURL("server.info.url"));
 		}
 
 		// if marked for "workspace", use the "user" site info from the properties
 		else if (SPECIAL_WORKSPACE.equals(special))
 		{
-			// set the url to the site config'ed url
-			rv = StringUtil.trimToNull(ServerConfigurationService.getString("myworkspace.info.url"));
+			rv = StringUtils.trimToNull(getLocalizedURL("myworkspace.info.url"));
 		}
 
 		// if marked for "worksite", use the setting from the site's definition
@@ -334,7 +428,7 @@ public class IFrameAction extends VelocityPortletPaneledAction
 			{
 				// get the site's info URL, if defined
 				Site s = SiteService.getSite(context);
-				rv = StringUtil.trimToNull(s.getInfoUrlFull());
+				rv = StringUtils.trimToNull(s.getInfoUrlFull());
 
 				// compute the info url for the site if it has no specific InfoUrl
 				if (rv == null)
@@ -351,14 +445,14 @@ public class IFrameAction extends VelocityPortletPaneledAction
 		else if (sakaiPropertiesUrlKey != null && sakaiPropertiesUrlKey.length() > 1)
 		{
 			// set the url to a string defined in sakai.properties
-			rv = StringUtil.trimToNull(ServerConfigurationService.getString(sakaiPropertiesUrlKey));
+			rv = StringUtils.trimToNull(ServerConfigurationService.getString(sakaiPropertiesUrlKey));
 		}
 		
 
 		// if it's not special, and we have no value yet, set it to the webcontent instruction page, as configured
-		if (rv == null)
+		if (rv == null || rv.equals("http://") || rv.equals("https://"))
 		{
-			rv = StringUtil.trimToNull(ServerConfigurationService.getString("webcontent.instructions.url"));
+			rv = StringUtils.trimToNull(getLocalizedURL("webcontent.instructions.url"));
 		}
 
 		if (rv != null)
@@ -399,10 +493,17 @@ public class IFrameAction extends VelocityPortletPaneledAction
 		Reference ref = EntityManager.newReference(url);
 
 		// if it didn't recognize this, return it unchanged
-		if (!ref.isKnownType()) return url;
+		if (ref.isKnownType())
+		{
+			// return the reference's url
+			String refUrl = ref.getUrl();
+			if (refUrl != null)
+			{
+				return refUrl;
+			}
+		}
 
-		// return the reference's url
-		return ref.getUrl();
+		return url;
 	}
 
 	/**
@@ -658,9 +759,16 @@ public class IFrameAction extends VelocityPortletPaneledAction
 		// if we rely on state (like all the other tools), we won't pick up any changes others make to the configuration till we are refreshed... -ggolden
 
 		// set our configuration into the context for the vm
-		context.put(URL, (String) state.getAttribute(URL));
+		String url = (String) state.getAttribute(URL);
+		String special = (String) state.getAttribute(SPECIAL);
+		context.put(URL, url);
 		context.put(HEIGHT, state.getAttribute(HEIGHT));
-
+		
+		//for annotatedurl
+		context.put(TARGETPAGE_URL, state.getAttribute(TARGETPAGE_URL));
+		context.put(TARGETPAGE_NAME, state.getAttribute(TARGETPAGE_NAME));
+		context.put(ANNOTATED_TEXT, state.getAttribute(ANNOTATED_TEXT));
+		
 		// set the resource bundle with our strings
 		context.put("tlang", rb);
 
@@ -678,6 +786,37 @@ public class IFrameAction extends VelocityPortletPaneledAction
 			context.put("options_title", ToolManager.getCurrentPlacement().getTitle() + " " + rb.getString("gen.options"));
 		}
 	
+		// tracking event
+		String siteId = "";
+		try
+		{
+			Site s = SiteService.getSite(ToolManager.getCurrentPlacement().getContext());
+			siteId = s.getId();
+		}
+		catch (Throwable e)
+		{
+			
+		}
+		if (special == null)
+		{
+			if(state.getAttribute(EVENT_ACCESS_WEB_CONTENT) == null) {
+			
+				// this is a Web Content tool
+				m_eventTrackingService.post(m_eventTrackingService.newEvent(EVENT_ACCESS_WEB_CONTENT, url, siteId, false, NotificationService.NOTI_NONE));
+			}
+			else {
+				
+				// event in tool registration file will be used
+				m_eventTrackingService.post(m_eventTrackingService.newEvent((String)state.getAttribute(EVENT_ACCESS_WEB_CONTENT), url, siteId, false, NotificationService.NOTI_NONE));
+			}
+		}
+		else {
+			if(state.getAttribute(EVENT_ACCESS_WEB_CONTENT) != null) {
+				
+				// special and event in tool registration file
+				m_eventTrackingService.post(m_eventTrackingService.newEvent((String)state.getAttribute(EVENT_ACCESS_WEB_CONTENT), url, siteId, false, NotificationService.NOTI_NONE));
+			}
+		}
 
 		return (String) getContext(rundata).get("template");
 	}
@@ -689,9 +828,11 @@ public class IFrameAction extends VelocityPortletPaneledAction
 	{
 		// provide the source, and let the user edit, if not special
 		String special = (String) state.getAttribute(SPECIAL);
+		String source = "";
+		String siteId = "";
 		if (special == null)
 		{
-			String source = (String) state.getAttribute(SOURCE);
+			source = (String) state.getAttribute(SOURCE);
 			if (source == null) source = "";
 			context.put(SOURCE, source);
 			context.put("heading", rb.getString("gen.custom"));
@@ -718,18 +859,36 @@ public class IFrameAction extends VelocityPortletPaneledAction
 				try
 				{
 					Site s = SiteService.getSite(ToolManager.getCurrentPlacement().getContext());
+					siteId = s.getId();
 
-					String infoUrl = StringUtil.trimToNull(s.getInfoUrl());
+					String infoUrl = StringUtils.trimToNull(s.getInfoUrl());
 					if (infoUrl != null)
 					{
 						context.put("info_url", infoUrl);
 					}
 
-					String description = StringUtil.trimToNull(s.getDescription());
+					String description = StringUtils.trimToNull(s.getDescription());
 					if (description != null)
 					{
+	                    description = FormattedText.escapeHtmlFormattedTextarea(description);
 						context.put("description", description);
 					}
+				}
+				catch (Throwable e)
+				{
+				}
+			}
+			else if (SPECIAL_ANNOTATEDURL.equals(special))
+			{
+				
+				context.put("heading", rb.getString("gen.custom.annotatedurl"));
+
+				// for Annotated URL Tool page, also include the description
+				try
+				{		
+					String desp = state.getAttribute(ANNOTATED_TEXT).toString();
+					context.put("description", desp);
+		            
 				}
 				catch (Throwable e)
 				{
@@ -777,6 +936,7 @@ public class IFrameAction extends VelocityPortletPaneledAction
 			try
 			{
 				Site site = SiteService.getSite(toolConfig.getSiteId());
+				siteId = site.getId();
 				SitePage page = site.getPage(toolConfig.getPageId());
 
 				// if this is the only tool on that page, update the page's title also
@@ -802,11 +962,55 @@ public class IFrameAction extends VelocityPortletPaneledAction
 		{
 			template = template + "-site-customize";
 		}
+		else if (SPECIAL_WORKSPACE.equals(special))
+		{
+			template = template + "-customize";
+		}
+		else if (SPECIAL_ANNOTATEDURL.equals(special))
+		{
+			template = template + "-annotatedurl-customize";
+		}
 		else
 		{
 			template = template + "-customize";
 		}
 
+		
+		// tracking event
+		if(siteId.length() == 0) {
+			try
+			{
+				Site s = SiteService.getSite(ToolManager.getCurrentPlacement().getContext());
+				siteId = s.getId();
+			}
+			catch (Throwable e)
+			{
+				
+			}
+		}
+		if (special == null)
+		{
+			if(state.getAttribute(EVENT_REVISE_WEB_CONTENT) == null) {
+				
+				// this is a Web Content tool
+				m_eventTrackingService.post(m_eventTrackingService.newEvent(EVENT_REVISE_WEB_CONTENT, source, siteId, true, NotificationService.NOTI_NONE));
+			}
+			else {
+				// event in tool registration file will be used
+				m_eventTrackingService.post(m_eventTrackingService.newEvent((String)state.getAttribute(EVENT_REVISE_WEB_CONTENT), source, siteId, true, NotificationService.NOTI_NONE));
+			}
+		}
+		else {
+			if(state.getAttribute(EVENT_REVISE_WEB_CONTENT) != null) {
+				// special and event in tool registration file 
+				m_eventTrackingService.post(m_eventTrackingService.newEvent((String)state.getAttribute(EVENT_REVISE_WEB_CONTENT), source, siteId, true, NotificationService.NOTI_NONE));
+			}
+		}
+		
+		// output the max limit 
+		context.put("max_length_title", MAX_TITLE_LENGTH);
+		context.put("max_length_info_url", MAX_SITE_INFO_URL_LENGTH);
+		
 		return template;
 	}
 
@@ -824,39 +1028,6 @@ public class IFrameAction extends VelocityPortletPaneledAction
 
 		// get the site toolConfiguration, if this is part of a site.
 		ToolConfiguration toolConfig = SiteService.findTool(placement.getId());
-
-		// read source if we are not special
-		if (state.getAttribute(SPECIAL) == null)
-		{
-			String source = StringUtil.trimToZero(data.getParameters().getString(SOURCE));
-			if ((source != null) && (source.length() > 0) && (!source.startsWith("/")) && (source.indexOf("://") == -1))
-			{
-				source = "http://" + source;
-			}
-
-			// update state
-			// state.setAttribute(SOURCE, source);
-			placement.getPlacementConfig().setProperty(SOURCE, source);
-		}
-
-		else if (SPECIAL_WORKSITE.equals(state.getAttribute(SPECIAL)))
-		{
-			String infoUrl = StringUtil.trimToNull(data.getParameters().getString("infourl"));
-			if ((infoUrl != null) && (infoUrl.length() > 0) && (!infoUrl.startsWith("/")) && (infoUrl.indexOf("://") == -1))
-			{
-				infoUrl = "http://" + infoUrl;
-			}
-			String description = StringUtil.trimToNull(data.getParameters().getString("description"));
-
-			// update the site info
-			try
-			{
-				SiteService.saveSiteInfo(ToolManager.getCurrentPlacement().getContext(), description, infoUrl);
-			}
-			catch (Throwable e)
-			{
-			}
-		}
 
 		// height
 		String height = data.getParameters().getString(HEIGHT);
@@ -881,57 +1052,136 @@ public class IFrameAction extends VelocityPortletPaneledAction
 				return;
 			}
 		}
+		else if (SPECIAL_ANNOTATEDURL.equals(state.getAttribute(SPECIAL)))
+		{
+			// update the site info
+			try
+			{
+				String desp = data.getParameters().getString("description");
+				state.setAttribute(ANNOTATED_TEXT, desp);
+				placement.getPlacementConfig().setProperty(ANNOTATED_TEXT, desp);
+					
+			}
+			catch (Throwable e)
+			{
+			}
+		}
 		else
 		{
 			state.setAttribute(HEIGHT, height);
 			placement.getPlacementConfig().setProperty(HEIGHT, height);
 		}
+		
 
 		// title
 		String title = data.getParameters().getString(TITLE);
-		// state.setAttribute(TITLE, title);
-		if (StringUtil.trimToNull(title) == null)
+		if (StringUtils.isBlank(title))
 		{
-			addAlert(state, rb.getString("gen.tootit"));
+			addAlert(state, rb.getString("gen.tootit.empty"));
+			return;			
+		// SAK-19515 check for LENGTH of tool title
+		} 
+		else if (title.length() > MAX_TITLE_LENGTH)
+		{
+			addAlert(state, rb.getString("gen.tootit.toolong"));
 			return;			
 		}
 		placement.setTitle(title);
 		
-		// for web content tool, if it is a site page tool, and the only tool on the page, update the page title / popup.
-		if ((state.getAttribute(SPECIAL) == null) && (toolConfig != null))
+		// site info url 
+		String infoUrl = StringUtils.trimToNull(data.getParameters().getString("infourl"));
+		if (infoUrl != null && infoUrl.length() > MAX_SITE_INFO_URL_LENGTH)
 		{
-			try
+			addAlert(state, rb.getString("gen.info.url.toolong"));
+			return;
+		}
+		
+		try
+		{
+			Site site = SiteService.getSite(toolConfig.getSiteId());
+			SitePage page = site.getPage(toolConfig.getPageId());
+			page.setTitleCustom(true);
+			
+			// for web content tool, if it is a site page tool, and the only tool on the page, update the page title / popup.
+			if ((state.getAttribute(SPECIAL) == null) && (toolConfig != null))
 			{
-				Site site = SiteService.getSite(toolConfig.getSiteId());
-				SitePage page = site.getPage(toolConfig.getPageId());
-
 				// if this is the only tool on that page, update the page's title also
 				if ((page.getTools() != null) && (page.getTools().size() == 1))
 				{
-					// TODO: save site page title? -ggolden
 					String newPageTitle = data.getParameters().getString(FORM_PAGE_TITLE);
-					String currentPageTitle = (String) state.getAttribute(STATE_PAGE_TITLE);
 					
-					if (StringUtil.trimToNull(newPageTitle) == null)
+					if (StringUtils.isBlank(newPageTitle))
 					{
-						addAlert(state, rb.getString("gen.pagtit"));
+						addAlert(state, rb.getString("gen.pagtit.empty"));
 						return;		
 					}
-					else if (!newPageTitle.equals(currentPageTitle))
+					else if (newPageTitle.length() > MAX_TITLE_LENGTH)
 					{
-						page.setTitle(newPageTitle);
-						state.setAttribute(STATE_PAGE_TITLE, newPageTitle);
+						addAlert(state, rb.getString("gen.pagtit.toolong"));
+						return;			
 					}
-
+					page.setTitle(newPageTitle);
+					state.setAttribute(STATE_PAGE_TITLE, newPageTitle);
+					
 					// popup
 					boolean popup = data.getParameters().getBoolean("popup");
 					page.setPopup(popup);
-
-					SiteService.save(site);
 				}
 			}
-			catch (Exception ignore)
+					
+			SiteService.save(site);
+		}
+		catch (Exception ignore)
+		{
+			M_log.warn("doConfigure_update: " + ignore);
+		}
+
+		// read source if we are not special
+		if (state.getAttribute(SPECIAL) == null)
+		{
+			String source = StringUtils.trimToEmpty(data.getParameters().getString(SOURCE));
+			
+			// User entered nothing in the source box; give the user an alert
+			if (StringUtils.isBlank(source))
 			{
+				addAlert(state, rb.getString("gen.url.empty"));
+				return;		
+			}
+			
+			if ((!source.startsWith("/")) && (source.indexOf("://") == -1))
+			{
+				source = "http://" + source;
+			}
+			
+			// Validate the url
+			UrlValidator urlValidator = new UrlValidator();
+			if (!urlValidator.isValid(source)) 
+			{
+				addAlert(state, rb.getString("gen.url.invalid"));
+				return;
+			}
+
+			// update state
+			placement.getPlacementConfig().setProperty(SOURCE, source);
+		}
+
+		else if (SPECIAL_WORKSITE.equals(state.getAttribute(SPECIAL)))
+		{
+			if ((infoUrl != null) && (infoUrl.length() > 0) && (!infoUrl.startsWith("/")) && (infoUrl.indexOf("://") == -1))
+			{
+				infoUrl = "http://" + infoUrl;
+			}
+			String description = StringUtils.trimToNull(data.getParameters().getString("description"));
+			description = FormattedText.processEscapedHtml(description);
+
+			// update the site info
+			try
+			{
+				SiteService.saveSiteInfo(ToolManager.getCurrentPlacement().getContext(), description, infoUrl);
+			}
+			catch (Throwable e)
+			{
+				M_log.warn("doConfigure_update: " + e);
 			}
 		}
 
@@ -941,10 +1191,6 @@ public class IFrameAction extends VelocityPortletPaneledAction
 
 		// we are done with customization... back to the main mode
 		state.removeAttribute(STATE_MODE);
-
-		// deliver an update to the title panel (to show the new title)
-		// String titleId = titlePanelUpdateId(peid);
-		// schedulePeerFrameRefresh(titleId);
 
 		// refresh the whole page, since popup and title may have changed
 		scheduleTopRefresh();

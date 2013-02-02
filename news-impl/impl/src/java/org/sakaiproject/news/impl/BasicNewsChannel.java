@@ -3,18 +3,18 @@
  * $Id$
  ***********************************************************************************
  *
- * Copyright (c) 2003, 2004, 2005, 2006 The Sakai Foundation.
- * 
- * Licensed under the Educational Community License, Version 1.0 (the "License"); 
- * you may not use this file except in compliance with the License. 
+ * Copyright (c) 2003, 2004, 2005, 2006, 2007, 2008, 2009 The Sakai Foundation
+ *
+ * Licensed under the Educational Community License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
- * 
- *      http://www.opensource.org/licenses/ecl1.php
- * 
- * Unless required by applicable law or agreed to in writing, software 
- * distributed under the License is distributed on an "AS IS" BASIS, 
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. 
- * See the License for the specific language governing permissions and 
+ *
+ *       http://www.opensource.org/licenses/ECL-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
  * limitations under the License.
  *
  **********************************************************************************/
@@ -25,6 +25,7 @@ import java.io.IOException;
 import java.net.MalformedURLException;
 import java.net.URL;
 import java.text.DateFormat;
+import java.text.ParseException;
 import java.util.Date;
 import java.util.Iterator;
 import java.util.List;
@@ -41,6 +42,8 @@ import org.sakaiproject.news.api.NewsItemEnclosure;
 import org.sakaiproject.util.FormattedText;
 import org.sakaiproject.util.ResourceLoader;
 import org.sakaiproject.util.Validator;
+import org.sakaiproject.component.cover.ServerConfigurationService;
+import org.sakaiproject.tool.cover.SessionManager;
 
 import com.sun.syndication.feed.synd.SyndEnclosure;
 import com.sun.syndication.feed.synd.SyndEntry;
@@ -48,6 +51,7 @@ import com.sun.syndication.feed.synd.SyndFeed;
 import com.sun.syndication.feed.synd.SyndImage;
 import com.sun.syndication.fetcher.FeedFetcher;
 import com.sun.syndication.fetcher.impl.HttpURLFeedFetcher;
+import com.sun.syndication.io.ParsingFeedException;
 
 /***********************************************************************************
  * NewsChannel implementation
@@ -56,7 +60,9 @@ import com.sun.syndication.fetcher.impl.HttpURLFeedFetcher;
 public class BasicNewsChannel implements NewsChannel
 {
 	protected String m_source = null;
-
+	
+	protected String m_userAgent = null;
+	
 	protected String m_link = null;
 
 	protected String m_title = null;
@@ -88,18 +94,22 @@ public class BasicNewsChannel implements NewsChannel
 	/** Our log (commons). */
 	private static Log M_log = LogFactory.getLog(BasicNewsService.class);
 	
+	private ResourceLoader rl = new ResourceLoader("news-impl");
+
 	
 	/**
 	 * Construct.
 	 * 
 	 * @param source
 	 *        The URL from which the feed can be obtained
+	 * @param userAgent
+	 *        The user agent to make the request as.
 	 * @exception NewsConnectionException,
 	 *            for errors making the connection.
 	 * @exception NewsFormatException,
 	 *            for errors in the URL or errors parsing the feed.
 	 */
-	public BasicNewsChannel(String source) throws NewsConnectionException, NewsFormatException
+	public BasicNewsChannel(String source, String userAgent) throws NewsConnectionException, NewsFormatException
 	{
 		if (m_items == null)
 		{
@@ -109,6 +119,7 @@ public class BasicNewsChannel implements NewsChannel
 		// get the file, parse it and cache it
 		// throw NewsConnectionException if unable to get file
 		// throw NewsFormatException if file is in wrong format
+		m_userAgent = userAgent;
 		initChannel(source);
 	}
 
@@ -121,14 +132,22 @@ public class BasicNewsChannel implements NewsChannel
 	{
 		SyndFeed feed = null;
 
-		ResourceLoader rl = new ResourceLoader("news-impl");
-
 		try
 		{
+			// if feedUrl is on this sakai server, add session parameter
+			if ( source.startsWith( ServerConfigurationService.getServerUrl() ) )
+			{
+				String sessionId = SessionManager.getCurrentSession().getId();
+				if ( source.indexOf("?")!= -1 )
+					source = source+"&session="+sessionId;
+				else
+					source = source+"?session="+sessionId;
+			}
+			
 			URL feedUrl = new URL(source);
 			FeedFetcher feedFetcher = new HttpURLFeedFetcher();
+			feedFetcher.setUserAgent(m_userAgent);
 			feed = feedFetcher.retrieveFeed(feedUrl);
-		    
 		}
 		catch (MalformedURLException e)
 		{
@@ -141,15 +160,20 @@ public class BasicNewsChannel implements NewsChannel
 				M_log.debug("initChannel(" + source + ") constructor: couldn't connect: " + e.getMessage());
 			throw new NewsConnectionException( rl.getString("unable_to_obtain_news_feed") + " " + source);
 		}
+		catch (ParsingFeedException pfe)
+		{
+			M_log.info("initChannel(" + source + ") constructor: couldn't parse: "+ source, pfe);
+			throw new NewsConnectionException(rl.getString("unable_to_interpret") +" " + source);
+		}
 		catch (Exception e)
 		{
 			M_log.info("initChannel(" + source + ") constructor: couldn't parse: " + e.getMessage());
 			throw new NewsConnectionException(rl.getString("unable_to_interpret") +" " + source);
 		}
 
-		m_title = feed.getTitle();
+		m_title = FormattedText.processEscapedHtml(feed.getTitle());
 		m_source = source;
-		m_description = feed.getDescription();
+		m_description = FormattedText.processEscapedHtml(feed.getDescription());
 		m_description = Validator.stripAllNewlines(m_description);
 
 		m_lastbuilddate = "";
@@ -157,38 +181,38 @@ public class BasicNewsChannel implements NewsChannel
 		Date pubdate = feed.getPublishedDate();
 		if (pubdate != null)
 		{
-			m_pubdate = DateFormat.getDateInstance().format(pubdate);
+			m_pubdate = FormattedText.processEscapedHtml(DateFormat.getDateInstance().format(pubdate));
 			m_lastbuilddate = m_pubdate;
 		}
 		m_pubdate = Validator.stripAllNewlines(m_pubdate);
 		m_lastbuilddate = Validator.stripAllNewlines(m_lastbuilddate);
 
-		m_copyright = feed.getCopyright();
+		m_copyright = FormattedText.processEscapedHtml(feed.getCopyright());
 		m_copyright = Validator.stripAllNewlines(m_copyright);
 
-		m_language = feed.getLanguage();
+		m_language = FormattedText.processEscapedHtml(feed.getLanguage());
 		m_language = Validator.stripAllNewlines(m_language);
 
-		m_link = feed.getLink();
+		m_link = FormattedText.processEscapedHtml(feed.getLink());
 		m_link = Validator.stripAllNewlines(m_link);
 
 		SyndImage image = feed.getImage();
 		if (image != null)
 		{
-			m_imageLink = image.getLink();
+			m_imageLink = FormattedText.processEscapedHtml(image.getLink());
 			m_imageLink = Validator.stripAllNewlines(m_imageLink);
 
-			m_imageTitle = image.getTitle();
+			m_imageTitle = FormattedText.processEscapedHtml(image.getTitle());
 			m_imageTitle = Validator.stripAllNewlines(m_imageTitle);
 
-			m_imageUrl = image.getUrl();
+			m_imageUrl = FormattedText.processEscapedHtml(image.getUrl());
 			m_imageUrl = Validator.stripAllNewlines(m_imageUrl);
 
 			m_imageHeight = "";
 
 			m_imageWidth = "";
 
-			m_imageDescription = image.getDescription();
+			m_imageDescription = FormattedText.processEscapedHtml(image.getDescription());
 			m_imageDescription = Validator.stripAllNewlines(m_imageDescription);
 
 		}
@@ -201,7 +225,7 @@ public class BasicNewsChannel implements NewsChannel
 		{
 			SyndEntry entry = (SyndEntry) items.get(i);
 
-			String iTitle = entry.getTitle();
+			String iTitle = FormattedText.processEscapedHtml(entry.getTitle());
 			iTitle = Validator.stripAllNewlines(iTitle);
 
 			String iDescription = null;
@@ -219,13 +243,14 @@ public class BasicNewsChannel implements NewsChannel
 				M_log.warn(e);
 			}
 
-			String iLink = entry.getLink();
+			String iLink = FormattedText.processEscapedHtml(entry.getLink());
 			iLink = Validator.stripAllNewlines(iLink);
 			String iPubDate = "";
 			Date entrydate = entry.getPublishedDate();
 			if (entrydate != null)
 			{
-				iPubDate = DateFormat.getDateInstance().format(entrydate);
+				iPubDate = FormattedText.processEscapedHtml(
+				             DateFormat.getDateInstance().format(entrydate));
 			}
 			
 			List<NewsItemEnclosure> enclosures = new Vector<NewsItemEnclosure>();
@@ -235,7 +260,8 @@ public class BasicNewsChannel implements NewsChannel
 			{
 				SyndEnclosure syndEnclosure = (SyndEnclosure) syndEnclosures.get(j);
 
-				enclosures.add(new BasicNewsItemEnclosure(syndEnclosure.getUrl(), 
+				enclosures.add(new BasicNewsItemEnclosure(
+								FormattedText.processEscapedHtml(syndEnclosure.getUrl()), 
 								syndEnclosure.getType(), syndEnclosure.getLength()));
 
 			}
@@ -319,10 +345,26 @@ public class BasicNewsChannel implements NewsChannel
 	{
 		return m_pubdate;
 	}
+	public Date getPubdateInDateFormat(){
+		if (m_pubdate!=null) {
+			try {
+				return DateFormat.getInstance().parse(m_pubdate);
+			} catch (ParseException e) {}
+		}
+		return new Date();
+	}
 
 	public String getLastbuilddate()
 	{
 		return m_lastbuilddate;
+	}
+	public Date getLastbuilddateInDateFormat(){
+		if (m_lastbuilddate!=null) {
+			try {
+				return DateFormat.getInstance().parse(m_lastbuilddate);
+			} catch (ParseException e) {}
+		}
+		return new Date();
 	}
 
 	public String getImageUrl()
