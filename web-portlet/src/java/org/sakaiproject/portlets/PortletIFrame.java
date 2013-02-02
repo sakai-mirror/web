@@ -274,7 +274,6 @@ public class PortletIFrame extends GenericPortlet {
 			PrintWriter out = response.getWriter();
 			Placement placement = ToolManager.getCurrentPlacement();
             Properties config = getAllProperties(placement);
-System.out.println("CONFIG="+config);
 
 			response.setTitle(placement.getTitle());
 			String source = config.getProperty(SOURCE);
@@ -299,9 +298,8 @@ System.out.println("CONFIG="+config);
 
             // Compute the URL
             String url = sourceUrl(special, source, placement.getContext(), macroExpansion, passPid, placement.getId(), sakaiPropertiesUrlKey);
-System.out.println("special="+special+" source="+source+" pgc="+placement.getContext()+" macroExpansion="+macroExpansion+
-" passPid="+passPid+" PGID="+placement.getId()+" sakaiPropertiesUrlKey="+sakaiPropertiesUrlKey);
-System.out.println("url="+url);
+
+            //System.out.println("special="+special+" source="+source+" pgc="+placement.getContext()+" macroExpansion="+macroExpansion+" passPid="+passPid+" PGID="+placement.getId()+" sakaiPropertiesUrlKey="+sakaiPropertiesUrlKey+" url="+url);
 
 			if ( url != null && url.trim().length() > 0 ) {
 				Context context = new VelocityContext();
@@ -477,7 +475,7 @@ System.out.println("url="+url);
             String template = "/vm/edit.vm";
             if (SPECIAL_WORKSITE.equals(special)) template = "/vm/edit-site.vm";
             if (SPECIAL_ANNOTATEDURL.equals(special)) template = "/vm/edit-annotatedurl.vm";
-System.out.println("EDIT TEMP="+template+" special="+special);
+            // System.out.println("EDIT TEMP="+template+" special="+special);
 
 			vHelper.doTemplate(vengine, template, context, out);
 
