@@ -1,5 +1,5 @@
 <script type="text/javascript">
-	focus_path = [ "title" ];
+	focus_path = [ "title-of-tool" ];
 </script>
 
 <div class="portletBody">

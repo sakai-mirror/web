@@ -135,8 +135,6 @@ public class PortletIFrame extends GenericPortlet {
 
 	private static final String FORM_PAGE_TITLE = "title-of-page";
 
-	private static final String FORM_TOOL_TITLE = "title-of-tool";
-
 	private static final int MAX_TITLE_LENGTH = 99;
 
     private static final int MAX_SITE_INFO_URL_LENGTH = 255;
@@ -348,6 +346,7 @@ public class PortletIFrame extends GenericPortlet {
 			Placement placement = ToolManager.getCurrentPlacement();
             Properties config = getAllProperties(placement);
             String special = getSpecial(config);
+System.out.println("title="+placement.getTitle());
 			context.put("title", validator.escapeHtml(placement.getTitle(), false));
 			String source = placement.getPlacementConfig().getProperty(SOURCE);
 			if ( source == null ) source = "";
@@ -414,7 +413,7 @@ public class PortletIFrame extends GenericPortlet {
 					    String infoUrl = StringUtils.trimToNull(s.getInfoUrl());
 					    if (infoUrl != null)
 					    {
-						    context.put("info_url", infoUrl);
+						    context.put("info_url", FormattedText.escapeHtmlFormattedTextarea(infoUrl));
 					    }
 
 					    String description = StringUtils.trimToNull(s.getDescription());
@@ -473,6 +472,7 @@ public class PortletIFrame extends GenericPortlet {
 		    context.put("max_length_info_url", MAX_SITE_INFO_URL_LENGTH);
 
             String template = "/vm/edit.vm";
+            if (SPECIAL_SITE.equals(special)) template = "/vm/edit-site.vm";
             if (SPECIAL_WORKSITE.equals(special)) template = "/vm/edit-site.vm";
             if (SPECIAL_ANNOTATEDURL.equals(special)) template = "/vm/edit-annotatedurl.vm";
             // System.out.println("EDIT TEMP="+template+" special="+special);
@@ -535,9 +535,19 @@ public class PortletIFrame extends GenericPortlet {
 			// Stay in EDIT mode unless we are successful
 			response.setPortletMode(PortletMode.EDIT);
 
-			Placement placement = ToolManager.getCurrentPlacement();
 			// get the site toolConfiguration, if this is part of a site.
+			Placement placement = ToolManager.getCurrentPlacement();
 			ToolConfiguration toolConfig = SiteService.findTool(placement.getId());
+            Properties config = getAllProperties(placement);
+            String special = getSpecial(config);
+
+            // site info url 
+            String infoUrl = StringUtils.trimToNull(request.getParameter("infourl"));
+            if (infoUrl != null && infoUrl.length() > MAX_SITE_INFO_URL_LENGTH)
+            {
+                addAlert(request, rb.getString("gen.info.url.toolong"));
+                return;
+            }
 
 			String height = request.getParameter(HEIGHT);
 			if (height.equals(rb.getString("gen.heisomelse")))
@@ -587,12 +597,11 @@ public class PortletIFrame extends GenericPortlet {
 				page.setTitleCustom(true);
 
 				// for web content tool, if it is a site page tool, and the only tool on the page, update the page title / popup.
-				if (toolConfig != null)
+				if (toolConfig != null && ! SPECIAL_WORKSITE.equals(special) && ! SPECIAL_WORKSPACE.equals(special) )
 				{
 					// if this is the only tool on that page, update the page's title also
 					if ((page.getTools() != null) && (page.getTools().size() == 1))
 					{
-						// String newPageTitle = data.getParameters().getString(FORM_PAGE_TITLE);
 						String newPageTitle = request.getParameter(FORM_PAGE_TITLE);
 
 						if (StringUtils.isBlank(newPageTitle))
@@ -628,6 +637,27 @@ public class PortletIFrame extends GenericPortlet {
 			placement.getPlacementConfig().setProperty(SOURCE, source);
 
 			placement.save();
+
+            // Handle the infoUrl
+            if (SPECIAL_WORKSITE.equals(special))
+            {
+                if ((infoUrl != null) && (infoUrl.length() > 0) && (!infoUrl.startsWith("/")) && (infoUrl.indexOf("://") == -1))
+                {
+                    infoUrl = "http://" + infoUrl;
+                }
+                String description = StringUtils.trimToNull(request.getParameter("description"));
+                description = FormattedText.processEscapedHtml(description);
+    
+                // update the site info
+                try
+                {
+                    SiteService.saveSiteInfo(ToolManager.getCurrentPlacement().getContext(), description, infoUrl);
+                }
+                catch (Throwable e)
+                {
+                    M_log.warn("doConfigure_update: " + e);
+                }
+            }
 
 			response.setPortletMode(PortletMode.VIEW);
 		}
