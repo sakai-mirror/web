@@ -346,7 +346,6 @@ public class PortletIFrame extends GenericPortlet {
 			Placement placement = ToolManager.getCurrentPlacement();
             Properties config = getAllProperties(placement);
             String special = getSpecial(config);
-System.out.println("title="+placement.getTitle());
 			context.put("title", validator.escapeHtml(placement.getTitle(), false));
 			String source = placement.getPlacementConfig().getProperty(SOURCE);
 			if ( source == null ) source = "";

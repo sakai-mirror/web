@@ -21,3 +21,8 @@ and tested.
 The annotatedurl feature is rately used and its use cases are 
 pretty narrow and subtle.
 
+From an internationalization perspective the two sets of bundles
+(web-tool) and (web-portlet) should remain clones of one another 
+to keep things as simple as possible - there is no reason for them
+to diverge in any way.
+
