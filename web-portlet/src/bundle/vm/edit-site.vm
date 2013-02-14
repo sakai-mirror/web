@@ -1,6 +1,8 @@
 
 <script type="text/javascript">
-	focus_path = [ "title-of-page" ];
+$(document).ready(function() {
+    $('form:first *:input[type!=hidden]:first').focus();
+});
 </script>
 
 <div class="portletBody">
@@ -44,7 +46,6 @@
 
 		<p class="shorttext indnt1">
 			<label for="infourl">$tlang.getString("gen.info.url")</label>
-            ## Validator called inside the Java
 			<input type="text" name="infourl" id="infourl" value="$!info_url" size="40" maxlength="$max_length_info_url"/>
 		</p>
 		<p class="instruction">$tlang.getString("gen.info.url.msg")</p>

@@ -1,5 +1,7 @@
 <script type="text/javascript">
-	focus_path = [ "title-of-tool" ];
+$(document).ready(function() {
+    $('form:first *:input[type!=hidden]:first').focus();
+});
 </script>
 
 <div class="portletBody">
@@ -75,5 +77,6 @@
 			<input type="submit" accesskey ="s" class="active" name="$doUpdate" value="$tlang.getString('gen.save')" />
 			<input type="submit" accesskey ="x" name="$doCancel" value="$tlang.getString('gen.cancel')" />
 		</p>
+        <input type="hidden" name="sakai_csrf_token" value="$sakai_csrf_token" />
 	</form>
 </div>

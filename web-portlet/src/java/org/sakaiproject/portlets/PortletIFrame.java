@@ -65,6 +65,8 @@ import org.sakaiproject.util.ResourceLoader;
 
 import org.sakaiproject.tool.api.Session;
 import org.sakaiproject.tool.cover.SessionManager;
+import org.sakaiproject.event.api.UsageSession;
+import org.sakaiproject.event.cover.UsageSessionService;
 import org.sakaiproject.component.cover.ServerConfigurationService;
 
 import org.sakaiproject.site.api.Site;
@@ -86,7 +88,6 @@ import org.sakaiproject.authz.api.AuthzGroup;
 import org.sakaiproject.authz.api.GroupNotDefinedException;
 import org.sakaiproject.authz.api.Role;
 import org.sakaiproject.authz.cover.AuthzGroupService;
-
 
 // Velocity
 import org.apache.velocity.VelocityContext;
@@ -301,6 +302,10 @@ public class PortletIFrame extends GenericPortlet {
 
 			if ( url != null && url.trim().length() > 0 ) {
 				Context context = new VelocityContext();
+
+                Session session = SessionManager.getCurrentSession();
+                String csrfToken = (String) session.getAttribute(UsageSessionService.SAKAI_CSRF_SESSION_ATTRIBUTE);
+                if ( csrfToken != null ) context.put("sakai_csrf_token", csrfToken);
 				context.put("tlang", rb);
 				context.put("validator", validator);
 				context.put("source",url);
@@ -334,6 +339,9 @@ public class PortletIFrame extends GenericPortlet {
 			if ( title != null ) response.setTitle(title);
 
 			Context context = new VelocityContext();
+            Session session = SessionManager.getCurrentSession();
+            String csrfToken = (String) session.getAttribute(UsageSessionService.SAKAI_CSRF_SESSION_ATTRIBUTE);
+            if ( csrfToken != null ) context.put("sakai_csrf_token", csrfToken);
 			context.put("tlang", rb);
 			context.put("validator", validator);
 			sendAlert(request,context);
