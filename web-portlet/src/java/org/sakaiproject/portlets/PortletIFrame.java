@@ -534,7 +534,7 @@ public class PortletIFrame extends GenericPortlet {
 					    String description = StringUtils.trimToNull(s.getDescription());
 					    if (description != null)
 					    {
-	                        description = FormattedText.escapeHtmlFormattedTextarea(description);
+					  	    description = FormattedText.processEscapedHtml(description);
 						    context.put("description", description);
 					    }
 				    }
@@ -790,7 +790,6 @@ public class PortletIFrame extends GenericPortlet {
                     infoUrl = "http://" + infoUrl;
                 }
                 String description = StringUtils.trimToNull(request.getParameter("description"));
-                description = FormattedText.processEscapedHtml(description);
     
                 // update the site info
                 try
